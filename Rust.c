@@ -17,11 +17,6 @@
 // Declaração das funções para o .h
 
 /*
-Faz com que as letras fiquem todas minúsculas usando tolower();
-*/
-void NormalizaAPP(char* app);
-
-/*
 Retornar quantia de argumentos de um determinado programa
 retorna >= 1 pois arg[0] é o programa
 */
@@ -34,15 +29,6 @@ Usa memória dinâmicamente alocada e a libera ao final da função
 void LidaComPrograma (char *comline);
 
 // Funções
-
-void NormalizaAPP(char* app) {
-	int i = 0;
-	while(app[i] != '\0') {
-		//verifica se o que não é espaço/caractere está minúsculo
-		app[i] = tolower(app[i]);
-		i++;
-	}
-}
 
 void Retira1Espaco(char* prog) {
     int i = 0;
@@ -118,7 +104,13 @@ void ExecutaSalvaARQ(char* programa, char** args, int* pipeP, int flag1, int typ
             }
             
 
-            //close(STDOUT_FILENO);
+            //devolve descritor arquivo:
+			if (flag1 == WriteP) {
+				close(STDIN_FILENO);
+			}
+			else {
+				close(STDOUT_FILENO);
+			}
         }
         else {
 			if (execvp(programa, args) == -1) {
@@ -162,7 +154,14 @@ void ExecutaSalvaARQ(char* programa, char** args, int* pipeP, int flag1, int typ
 					write(save, txt, strlen(txt));
 				}
 
-				//close(STDIN_FILENO);
+				//devolve descritor arquivo:
+				if (flag1 == WriteP) {
+					close(STDIN_FILENO);
+				}
+				else {
+					close(STDOUT_FILENO);
+				}
+				
 			}
 			else {
 				dup2(pipeP[ReadP], STDIN_FILENO);
@@ -211,6 +210,8 @@ void ExecutaSalvaARQ(char* programa, char** args, int* pipeP, int flag1, int typ
 				fflush(stdout);
 				ler = read(STDIN_FILENO, lido, 4096);
 			}
+
+			close(STDIN_FILENO);
 		}
 		else {
 			close(pipeP[WriteP]);
@@ -502,16 +503,14 @@ void TokenizacaoMeQ (char* string, int* pipeP, int* qualpipe) {
 	}
 }
 
+void Processos () {
+
+}
+
 void LidaComPrograma (char *comline) {
 	char *tokenprog, *saveP, *verifFim;
 	int i = 0;
-    int pipeP[2], qualpipe = 1, Fim = 0;
-
-    //cria pipe
-    if (pipe(pipeP) == -1) {
-        perror("Erro de criação do pipe! ");
-        exit(1);
-    }
+    int pipe1[2], pipe2[2], qualpipe = 1, Fim = 0;
 
 	// Usa strtok para quebrar a string no 1° programa + argumento ou semelhante
 	tokenprog = strtok_r(comline, "|", &saveP);
@@ -553,6 +552,43 @@ void LidaComPrograma (char *comline) {
 	}
 }
 
+//func teste
+void tiraon(char *txt) {
+	for (int i = 0; i < 4096; i++) {
+		if (txt[i] == '\n') {
+			txt[i] = '\0';
+			break;
+		}
+	}
+}
+
+void alocaMem(char *point, int tam) {
+	point = malloc(1 * tam);
+}
+
+void quebraSTR(char **pointStr, char *str, int *qntToken) {
+	char *tok;
+	int aux = 0;
+
+	tok = strtok(str, " ");
+	alocaMem(*pointStr, strlen(tok));
+	pointStr++;
+	aux++;
+	while (tok != NULL)
+	{
+		tok = strtok(NULL, " ");
+		alocaMem(*pointStr, strlen(tok));
+		pointStr++;
+		aux++;
+	}
+	
+	*qntToken = aux;
+	//retorna o ponteiro duplo pra primeira posição
+	for (int i = 0; i <= aux; i ++) {
+		pointStr--;
+	}
+}
+
 int main (void) {
 	char comline[4096];
 
@@ -563,17 +599,19 @@ int main (void) {
 		printf("$ ");
 		setbuf(stdout, NULL);
 		setbuf(stdin, NULL);
-		if (scanf("%[^\n]", comline) > 0) {
-			//faz com que a string fique toda em minúsculo
-			NormalizaAPP(comline);
 
-			//QUEBRA O LOOP INFINITO
-			if (strstr(comline, "exit") != NULL) {
-				return 0;
-			}
-
-			LidaComPrograma (comline);
+		int leu = read(STDIN_FILENO, comline, 4096);
+		if (leu == -1) {
+			perror("Erro de leitura de teclado! ");
 		}
+		tiraon(comline);
+
+		//QUEBRA O LOOP INFINITO
+		if (strstr(comline, "exit") != NULL) {
+			return 0;
+		}
+
+		LidaComPrograma (comline);
 	}
 
 	return 0;
