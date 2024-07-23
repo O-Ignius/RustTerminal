@@ -7,9 +7,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-#define pipes 0
-#define MaiQ 1
-#define MenQ 2
+#define buffTAM 4096
 
 #define ReadP 0
 #define WriteP 1
@@ -96,8 +94,8 @@ int verifSeparador(char *tok) {
 //retorna tambem um inteiro referente a quantia de programas a serem abertos
 //############Função Correta!
 int quebraSTR(char ***pointStr, char *str, int *qntToken) {
-	char *tok, **saveP, ***saveppp;
-	int aux = 0, tam, qntProgs = 1, i, qntArgs = 0;
+	char *tok, **saveP = NULL;
+	int aux = 0, tam, qntProgs = 1, i, qntArgs = 0, retPrim = 0;
 
 	tok = strtok(str, " ");
 
@@ -135,6 +133,7 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 				i++;
 			}
 			qntArgs = 0;
+			retPrim++;
 
 			qntProgs++;
 			pointStr++;
@@ -150,6 +149,7 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 			memcpy(**pointStr ,tok, tam);
 			aux++;
 
+			retPrim++;
 			pointStr++;
 		}
 
@@ -169,7 +169,7 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 
 	i = 0;
 
-	while (i < qntProgs) //retorna para a primeira posição
+	while (i < retPrim) //retorna para a primeira posição
 	{
 		pointStr--;
 		i++;
@@ -206,25 +206,78 @@ void umProg(char **args) {
 	}
 }
 
-int verifMenQ(char **args, int qntTokens) {
-	int i = 0, aux = 0;;
+//verifica separador e retorna -> 0 = PIPE | 1 = > (maior que) | 2 = < (menor que)	|| Retorna em qualquer outro caso
+int verifSEP(char *args) {
+ 	int i = 0, aux;
 
-	while (i < qntTokens)
-	{
-		if (strcmp(args[i], "<") == 0) {
-			aux++;
-		}
-
-		i++;
+ 	if (strcmp(args, "|") == 0) {
+		aux = 0;
+	}
+	else if (strcmp(args, ">") == 0) {
+		aux = 1;
+	}
+	else if (strcmp(args, "<") == 0) {
+		aux = 2;
+	}
+	else {
+		aux = -1;
 	}
 	
 	return aux;
 }
 
+//passa args(nome do arquivo sem espaços) e um vetor de descritor de arquivo pipe onde lê do STDIN e escreve o conteúdo lido para um arquivo
+void criaArqv(char *args, int *pipeFD) {
+	FILE *arq;
+	char buff[buffTAM];
+
+	memset(buff, 0, buffTAM); //zerar o vetor buffer
+
+	dup2(pipeFD[ReadP], STDIN_FILENO);
+
+	//fecha no geral
+	close(pipeFD[WriteP]);
+	close(pipeFD[ReadP]);
+
+
+	arq = fopen(args, "w");
+	if (arq == NULL) {
+		perror("Erro de criação de arquivo");
+		exit(1);
+	}
+	
+	read(STDIN_FILENO, buff, 4096);
+	fwrite(buff, 1, 4096, arq);
+
+	fclose(arq);
+
+	exit(1);
+
+	//liberando fd
+	//close(STDIN_FILENO);
+}
+
+//passa args, o vetor do pipe, a ponta e em qual descritor vincular para executar e ler/escrever em/de algum programa
+void execProg(char **args, int *pipeFD, int ponta, int vinculo) {
+	dup2(pipeFD[ponta], vinculo);
+
+	//fecha no geral
+	close(pipeFD[WriteP]);
+	close(pipeFD[ReadP]);
+
+	if (execvp(args[0], args) == -1) {
+		perror("Erro de execução de programa! ");
+		exit(1);
+	}
+
+	//liberando vinculo
+	//close(vinculo);
+}
+
 //função correta
 //abre dois programas
-void doisProgs(char ***args, int qntTokens) {
-	int pidF1, pidF2, pipeFD[2];
+void doisProgs(char ***args) {
+	int pidF1 = -1, pidF2 = -1, pipeFD[2], sep;
 
 	/*
 	########  teste hardcode
@@ -237,6 +290,8 @@ void doisProgs(char ***args, int qntTokens) {
 		exit(1);
 	}
 
+	//verifica o separador
+	sep = verifSEP(*(args[1]));
 
 	pidF1 = fork();
 	pidF2 = fork();
@@ -257,39 +312,394 @@ void doisProgs(char ***args, int qntTokens) {
 		close(pipeFD[ReadP]);
 
 		//3° parametro: WUNTRACED = executa 1 por vez | WNOHANG = executa mesmo que o outro não tenha finalizado
-		waitpid(pidF1, NULL, WUNTRACED);
-		waitpid(pidF2, NULL, WUNTRACED);
+		waitpid(pidF1, NULL, NULL);
+		waitpid(pidF2, NULL, NULL);
 	}
-	//filho1
-	else if (pidF1 == 0) {
-		dup2(pipeFD[WriteP], STDOUT_FILENO);
-
-		//fecha no geral
-		close(pipeFD[WriteP]);
-		close(pipeFD[ReadP]);
-
-		if (execvp(*args[0], *args) == -1) {
-			perror("Erro de execução de programa! ");
-			exit(1);
+	if (sep == 0) {
+		//filho1
+		if (pidF1 == 0) {
+			execProg(*args, pipeFD, WriteP, STDOUT_FILENO);
+		}
+		//filho 2
+		else if (pidF2 == 0) {
+			args+=2; //pula pra 3° posição ponteiro triplo onde está o prox argumento
+			
+			execProg(*args, pipeFD, ReadP, STDIN_FILENO);
 		}
 	}
-	else if (pidF2 == 0) {
-		args+=2;
-		dup2(pipeFD[ReadP], STDIN_FILENO);
+	else if (sep == 1) {
+		//filho1
+		if (pidF1 == 0) {
+			execProg(*args, pipeFD, WriteP, STDOUT_FILENO);
+		}
+		//filho 2
+		else if (pidF2 == 0) {
+			args+=2; //pula pra 3° posição ponteiro triplo onde está o prox argumento
+			criaArqv(**args, pipeFD);
+		}
+	}
+	else if (sep == 2) {
+		//filho1
+		if (pidF1 == 0) {
+			criaArqv(**args, pipeFD);
+		}
+		//filho 2
+		else if (pidF2 == 0) {
+			args+=2; //pula pra 3° posição ponteiro triplo onde está o prox argumento
+			
+			execProg(*args, pipeFD, WriteP, STDOUT_FILENO);
+		}
+	}
+	else {
+		printf("Erro de argumentos! \n");
+		exit(1);
+	}
+	
+}
 
-		//fecha no geral
-		close(pipeFD[WriteP]);
-		close(pipeFD[ReadP]);
+void alocaMEMint(int **point, int qnt) {
+	*point = malloc(1*sizeof(int));
+	if (point == NULL) {
+		perror("Erro de memória! ");
+		exit(1);
+	}
+}
 
-		if (execvp(*args[0], *args) == -1) {
-			perror("Erro de execução de programa! ");
-			exit(1);
+//FUNÇÕES ADAPTADAS PARA 3 OU MAIS PARAMETROS
+//passa args(nome do arquivo sem espaços) e um vetor de descritor de arquivo pipe onde lê do STDIN e escreve o conteúdo lido para um arquivo
+void criaArqv3Args(char *args, int *pipeFD, int *pipeFD2) {
+	FILE *arq;
+	char buff[buffTAM];
+
+	memset(buff, 0, buffTAM); //zerar o vetor buffer
+
+	dup2(pipeFD[ReadP], STDIN_FILENO);
+
+	if (pipeFD2 != NULL) {
+		dup2(pipeFD2[WriteP], STDOUT_FILENO);
+
+		close(pipeFD2[WriteP]);
+		close(pipeFD2[ReadP]);
+	}
+
+	//fecha no geral
+	close(pipeFD[WriteP]);
+	close(pipeFD[ReadP]);
+
+
+	arq = fopen(args, "w");
+	if (arq == NULL) {
+		perror("Erro de criação de arquivo");
+		exit(1);
+	}
+	
+	read(STDIN_FILENO, buff, 4096);
+	fwrite(buff, 1, 4096, arq);
+
+	fclose(arq);
+
+	arq = fopen(args, "r");
+	// le do arquivo e escreve na saida
+	fread(buff, 1, buffTAM, arq);
+
+	fclose(arq);
+
+	write(STDOUT_FILENO, buff, buffTAM);
+
+	//após escrever, ele sai, trabalho concluido
+	exit(1);
+
+	//liberando fd
+	//close(STDIN_FILENO);
+}
+
+//passa args, o vetor do pipe, a ponta e em qual descritor vincular para executar e ler/escrever em/de algum programa
+void execProg3Args(char **args, int *pipeFD, int *pipeFD2, int ponta1, int vinculo1, int ponta2, int vinculo2) {
+	dup2(pipeFD[ponta1], vinculo1);
+
+	
+	if (pipeFD2 != NULL) {
+		dup2(pipeFD2[ponta2], vinculo2);
+
+		close(pipeFD2[WriteP]);
+		close(pipeFD2[ReadP]);
+	}
+
+	//fecha no geral
+	close(pipeFD[WriteP]);
+	close(pipeFD[ReadP]);
+	if (execvp(args[0], args) == -1) {
+		perror("Erro de execução de programa! ");
+		exit(1);
+	}
+
+	//liberando vinculo
+	//close(vinculo);
+}
+
+
+
+void forkOPT(char **args, int sep, int *pipeFD, int *pipeFD2, int control, int extrem) {
+	if (extrem == 1) {//está no inicio
+		if (sep == 0) {
+			execProg(args, pipeFD, WriteP, STDOUT_FILENO);
+		}
+		else if (sep == 1) {
+
+			criaArqv(*args, pipeFD);
+		}
+		else if (sep == 2) {
+
+			criaArqv3Args(*args, pipeFD2, pipeFD);
+		}
+	}
+	else if (extrem == 2)// está no fim
+	{
+		if (sep == 0) {
+			execProg(args, pipeFD, ReadP, STDIN_FILENO);
+		}
+		else if (sep == 1) {
+
+			criaArqv(*args, pipeFD);
+		}
+		else if (sep == 2) {
+
+			criaArqv3Args(*args, pipeFD2, pipeFD);
+		}
+	}
+	else {
+		if (sep == 0) {
+			execProg3Args(args, pipeFD, pipeFD2, ReadP, STDIN_FILENO, WriteP, STDOUT_FILENO);
+		}
+		else if (sep == 1) {
+
+			criaArqv3Args(*args, pipeFD, pipeFD2);
+		}
+		else if (sep == 2) {
+
+			criaArqv3Args(*args, pipeFD2, pipeFD);
 		}
 	}
 }
 
-void tresMaisProg() {
-;
+void fechaPipes(int **pipeFD, int qntProgs) {
+	int i;
+
+	i = 0;
+	while (i < (qntProgs - 1))
+	{
+		//fecha no geral
+		close(*pipeFD[WriteP]);
+		close(*pipeFD[ReadP]);
+		pipeFD++;
+		i++;
+	}
+}
+
+void tresMaisProg(char ***args, int qntProgs) {
+	int *pidFG = NULL, **pipeFD = NULL, *sep = NULL, control = 0, i = 0, aux;
+	int **pipeFD2 = NULL, **pipeFD_base = NULL, *sep_base = NULL, savePipe1[2], savePipe2[2];
+
+	pidFG = malloc(1 * (qntProgs));
+	if (pidFG == NULL) {
+		perror("Erro de memória! ");
+		exit(1);
+	}
+
+	pipeFD = malloc(1 * (qntProgs - 1));
+	if (pipeFD == NULL) {
+		perror("Erro de memória! ");
+		exit(1);
+	}
+
+	i = 0;
+	while (i < (qntProgs - 1))//cria todos pipes necessários
+	{
+		alocaMEMint(pipeFD, 2); //aloca memória para pipes
+		if (pipe(*pipeFD) < 0) {
+			perror("Erro na criação do pipe ");
+		}
+		pipeFD++;
+		i++;
+	}
+
+	i = 0;
+	while (i < (qntProgs - 1))//retorna pipes pro inicio
+	{
+		pipeFD--;
+		i++;
+	}
+
+	//aloca memoria pro separador:
+	sep = malloc(1*(qntProgs - 1));
+	if (sep == NULL) {
+		perror("Erro de memória! ");
+		exit(1);
+	}
+
+	i = 0;
+	while (i < (qntProgs - 1))
+	{
+		args++;
+		*sep = verifSEP(**args);
+		sep++;
+		i++;
+		args++;
+	}
+	i = 0;
+	while (i < (qntProgs - 1))
+	{
+		sep--;
+		args--;
+		args--;
+		i++;
+	}
+
+	sep_base = sep;
+	pipeFD_base = pipeFD;
+
+	i = 0;
+	while (i < qntProgs) { //cria todos fork necessários ps: +1 pro pai
+		(*pidFG) = fork();
+		control++;
+		if (*pidFG == 0 || i == ((qntProgs - 1))) {
+			break; //se estiver no filho quebre ou caso esteja no ultimo filho, quebre tambem
+		}
+		(pidFG)++;
+		(args) += 2;// pula pro separador
+		i++;
+	}
+
+	if (*pidFG == 0) {
+		//filhos
+		if (control == 1) { //está no primeiro filho
+			savePipe1[0] = ((pipeFD[0])[0]);
+			savePipe1[1] = ((pipeFD[0])[1]);
+
+			i = 0;
+			while (i < (qntProgs - 1)) {
+				if (((*pipeFD_base)[0]) != savePipe1[0] && ((*pipeFD_base)[0]) != savePipe1[1]) {
+					//fecha no geral
+					close((*pipeFD_base)[WriteP]);
+					close((*pipeFD_base)[ReadP]);
+					pipeFD_base++;
+					i++;
+				}
+				else {
+					pipeFD_base++;
+					i++;
+				}
+			}
+
+			forkOPT(*args, (sep[control - 1]), savePipe1, NULL, control, 1);
+		}
+		else if (control == qntProgs) { //está no ultimo filho
+			savePipe1[0] = ((pipeFD[control - 2])[0]);
+			savePipe1[1] = ((pipeFD[control - 2])[1]);
+
+			i = 0;
+			while (i < (qntProgs - 1)) {
+				if (((*pipeFD_base)[0]) != savePipe1[0] && ((*pipeFD_base)[1]) != savePipe1[1]) {
+					//fecha no geral
+					close((*pipeFD_base)[WriteP]);
+					close((*pipeFD_base)[ReadP]);
+					pipeFD_base++;
+					i++;
+				}
+				else {
+					pipeFD_base++;
+					i++;
+				}
+			}
+
+			forkOPT(*args, (sep[control - 2]), savePipe1, NULL, control, 2);
+		}
+		else {
+			savePipe1[0] = ((pipeFD[control - 2])[0]);
+			savePipe1[1] = ((pipeFD[control - 2])[1]);
+			savePipe2[0] = ((pipeFD[control - 1])[0]);
+			savePipe2[1] = ((pipeFD[control - 1])[1]);
+
+			i = 0;
+			while (i < (qntProgs - 1)) {
+				if (((*pipeFD_base)[0]) == savePipe1[0] && ((*pipeFD_base)[1]) == savePipe1[1]) {
+					pipeFD_base++;
+					i++;
+				}
+				else if (((*pipeFD_base)[0]) == savePipe2[0] && ((*pipeFD_base)[1]) == savePipe2[1]) {
+					pipeFD_base++;
+					i++;
+				}
+				else {
+					//fecha no geral
+					close((*pipeFD_base)[WriteP]);
+					close((*pipeFD_base)[ReadP]);
+					pipeFD_base++;
+					i++;
+				}
+			}
+
+			forkOPT(*args, (sep[control - 2]), savePipe1, savePipe2, control, 0);
+		}
+	}
+	else { //loop para o pai
+		//fecha todos fd
+		i = 0;
+		while (i < (qntProgs - 1))
+		{
+			//fecha no geral
+			close((*pipeFD)[WriteP]);
+			close((*pipeFD)[ReadP]);
+			(*pipeFD)++;
+			i++;
+		}
+
+		i = 0;
+		while (i < (qntProgs - 1))
+		{
+			(*pipeFD)--;
+			i++;
+		}
+
+		i = 0;
+		while (i < (control))
+		{
+			waitpid(*pidFG, NULL, NULL);
+			(pidFG)++;
+			i++;
+		}
+	}
+
+	//libera memoria:
+	i = 0;
+	while (i < (qntProgs - 2)) {
+		pipeFD++;
+		i++;
+	}
+
+	i = 0;
+	while (i < (qntProgs - 1))
+	{
+		free(*pipeFD);
+		(pipeFD)--;
+		i++;
+	}
+
+	i = 0;
+	while (i < (qntProgs - 1))
+	{
+		sep_base++;
+		i++;
+	}
+
+	i = 0;
+	while (i < (qntProgs - 1))
+	{
+		free(sep_base);
+		sep_base--;
+		i++;
+	}
+	free(pipeFD);
 }
 
 void LidaComPrograma (char *comline) {
@@ -302,10 +712,10 @@ void LidaComPrograma (char *comline) {
 		umProg(*args);
 	}
 	else if (qntProgs == 2) {
-		doisProgs(args, qntTokens);
+		doisProgs(args);
 	}
 	else if (qntProgs >= 3) {
-
+		tresMaisProg(args, qntProgs);
 	}
 	else {
 		printf("!! Erro !!");
