@@ -39,29 +39,14 @@ void tiraon(char *txt) {
 
 //pensando que temos um ponteiro triplo (só pra apontar para os ponteiros duplos)
 //Está função realoca o ponteiro duplo de acordo com a quantia de argumentos que um determinado programa tem
-void alocaMeVETArgs(char **point, int qntProgs) {
+void alocaMeVETArgs(char ***point, int qntProgs) {
 	int i = 0;
 
-	//retorna ponteiro pro inicio
-	while (i < qntProgs)
-	{
-		point--;
-		i++;
-	}
-
-	if (realloc(point, 1 * qntProgs) == NULL) {
+	*point = malloc(1*qntProgs);
+	if (point == NULL) {
 		perror("Erro de realocação de memória! ");
 		exit(1);
 	}
-
-	i = 0;
-	//retorna ponteiro para posição que estava antes do realloc
-	while (i < qntProgs)
-	{
-		point++;
-		i++;
-	}
-
 }
 
 //aloca um vetor para receber uma string que contenha um argumento ou nome do programa
@@ -91,11 +76,10 @@ int verifSeparador(char *tok) {
 	}
 }
 
-//retorna tambem um inteiro referente a quantia de programas a serem abertos
-//############Função Correta!
-int quebraSTR(char ***pointStr, char *str, int *qntToken) {
+//quebra a string e coloca cada comando + argumento em um ponteiro duplo, os separadores ficam em ponteiros duplos próprios
+void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 	char *tok, **saveP = NULL;
-	int aux = 0, tam, qntProgs = 1, i, qntArgs = 0, retPrim = 0;
+	int aux = 0, tam, i, qntArgs = 0, retPrim = 0, qnt = 0;
 
 	tok = strtok(str, " ");
 
@@ -103,14 +87,28 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 	{
 		if (verifSeparador(tok) == 0) {
 			if (qntArgs > 0) {
-				alocaMeVETArgs(*pointStr, qntArgs);
-			}
-			else {
-				*pointStr = malloc(1);
-				if (pointStr == NULL) {
+
+				i = 0;
+				while (i < qntArgs) //volta pra primeira posição pra realocar
+				{
+					(*pointStr)--;
+					i++;
+				}
+				
+				if (realloc(*pointStr, (qntArgs + 1)) == NULL) { //realoca variante a quantia de argumentos
 					perror("Erro de alocação de memória! ");
 					exit(1);
 				}
+
+				i = 0;
+				while (i < qntArgs) //volta pra posição antes do realoc
+				{
+					(*pointStr)++;
+					i++;
+				}
+			}
+			else if (qntArgs == 0) {
+				alocaMeVETArgs(pointStr, 1);
 			}
 
 			tam = strlen(tok);
@@ -132,22 +130,19 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 				(*pointStr)--;
 				i++;
 			}
+			qntAUX[qnt++] = qntArgs;
 			qntArgs = 0;
 			retPrim++;
 
-			qntProgs++;
 			pointStr++;
 
-			*pointStr = malloc(1);
-			if (pointStr == NULL) {
-				perror("Erro de alocação de memória! ");
-				exit(1);
-			}
+			alocaMeVETArgs(pointStr, 1);
 
 			tam = strlen(tok);
 			alocaMemArgs(pointStr, tam); 
 			memcpy(**pointStr ,tok, tam);
 			aux++;
+			qntAUX[qnt++] = 1;
 
 			retPrim++;
 			pointStr++;
@@ -165,6 +160,7 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 		(*pointStr)--;
 		i++;
 	}
+	qntAUX[qnt] = qntArgs;
 	qntArgs = 0;
 
 	i = 0;
@@ -176,8 +172,6 @@ int quebraSTR(char ***pointStr, char *str, int *qntToken) {
 	}
 
 	*qntToken = aux;
-
-	return qntProgs;
 }
 
 //função correta
@@ -274,10 +268,40 @@ void execProg(char **args, int *pipeFD, int ponta, int vinculo) {
 	//close(vinculo);
 }
 
+void leArqv(char *args, int *pipeFD) {
+	FILE *arq;
+	char buff[buffTAM];
+
+	memset(buff, 0, buffTAM); //zerar o vetor buffer
+
+	dup2(pipeFD[WriteP], STDOUT_FILENO);
+
+	//fecha no geral
+	close(pipeFD[WriteP]);
+	close(pipeFD[ReadP]);
+
+
+	arq = fopen(args, "r");
+	if (arq == NULL) {
+		perror("Erro de abertura de arquivo");
+		exit(1);
+	}
+	
+	fread(buff, 1, buffTAM, arq);
+	write(STDOUT_FILENO, buff, buffTAM);
+
+	fclose(arq);
+
+	exit(1);
+
+	//liberando fd
+	//close(STDIN_FILENO);
+}
+
 //função correta
 //abre dois programas
 void doisProgs(char ***args) {
-	int pidF1 = -1, pidF2 = -1, pipeFD[2], sep;
+	int pidF1 = -1, pidF2 = 0, pipeFD[2], sep;
 
 	/*
 	########  teste hardcode
@@ -294,7 +318,9 @@ void doisProgs(char ***args) {
 	sep = verifSEP(*(args[1]));
 
 	pidF1 = fork();
-	pidF2 = fork();
+	if (pidF1 > 0) {
+		pidF2 = fork();
+	}
 
 	if (pidF1 < 0) {
 		perror("Erro de fork! ");
@@ -315,39 +341,28 @@ void doisProgs(char ***args) {
 		waitpid(pidF1, NULL, NULL);
 		waitpid(pidF2, NULL, NULL);
 	}
-	if (sep == 0) {
-		//filho1
-		if (pidF1 == 0) {
+	else if (pidF1 == 0) {
+		if (sep == 0 || sep == 1) {
 			execProg(*args, pipeFD, WriteP, STDOUT_FILENO);
 		}
-		//filho 2
-		else if (pidF2 == 0) {
-			args+=2; //pula pra 3° posição ponteiro triplo onde está o prox argumento
-			
+		else if (sep == 2)
+		{
 			execProg(*args, pipeFD, ReadP, STDIN_FILENO);
 		}
 	}
-	else if (sep == 1) {
-		//filho1
-		if (pidF1 == 0) {
-			execProg(*args, pipeFD, WriteP, STDOUT_FILENO);
+	else if (pidF2 == 0) {
+		args += 2;
+
+		if (sep == 0) {
+			execProg(*args, pipeFD, ReadP, STDIN_FILENO);
 		}
-		//filho 2
-		else if (pidF2 == 0) {
-			args+=2; //pula pra 3° posição ponteiro triplo onde está o prox argumento
+		else if (sep == 1)
+		{
 			criaArqv(**args, pipeFD);
 		}
-	}
-	else if (sep == 2) {
-		//filho1
-		if (pidF1 == 0) {
-			criaArqv(**args, pipeFD);
-		}
-		//filho 2
-		else if (pidF2 == 0) {
-			args+=2; //pula pra 3° posição ponteiro triplo onde está o prox argumento
-			
-			execProg(*args, pipeFD, WriteP, STDOUT_FILENO);
+		else if (sep == 2)
+		{
+			leArqv(**args, pipeFD);
 		}
 	}
 	else {
@@ -464,7 +479,7 @@ void forkOPT(char **args, int sep, int *pipeFD, int *pipeFD2, int control, int e
 		}
 		else if (sep == 2) {
 
-			criaArqv3Args(*args, pipeFD2, pipeFD);
+			leArqv(*args, pipeFD);
 		}
 	}
 	else {
@@ -650,14 +665,14 @@ void tresMaisProg(char ***args, int qntProgs) {
 			//fecha no geral
 			close((*pipeFD)[WriteP]);
 			close((*pipeFD)[ReadP]);
-			(*pipeFD)++;
+			(pipeFD)++;
 			i++;
 		}
 
 		i = 0;
 		while (i < (qntProgs - 1))
 		{
-			(*pipeFD)--;
+			(pipeFD)--;
 			i++;
 		}
 
@@ -665,14 +680,14 @@ void tresMaisProg(char ***args, int qntProgs) {
 		while (i < (control))
 		{
 			waitpid(*pidFG, NULL, NULL);
-			(pidFG)++;
+			(pidFG)--;
 			i++;
 		}
 	}
 
 	//libera memoria:
 	i = 0;
-	while (i < (qntProgs - 2)) {
+	while (i < (qntProgs - 1)) {
 		pipeFD++;
 		i++;
 	}
@@ -680,33 +695,46 @@ void tresMaisProg(char ***args, int qntProgs) {
 	i = 0;
 	while (i < (qntProgs - 1))
 	{
-		free(*pipeFD);
 		(pipeFD)--;
+		free(*pipeFD);
 		i++;
 	}
 
-	i = 0;
-	while (i < (qntProgs - 1))
-	{
-		sep_base++;
-		i++;
-	}
-
-	i = 0;
-	while (i < (qntProgs - 1))
-	{
-		free(sep_base);
-		sep_base--;
-		i++;
-	}
+	free(sep);
 	free(pipeFD);
+	pidFG++; //avança pra primeira posição do ponteiro alocado
+	free(pidFG);
+}
+
+int qntProgramas(char *comline, int *qntSeparador) {
+	int i = 0, qntprogs = 1;
+	while (comline[i] != '\0') {
+		if (comline[i] == '|' || comline[i] == '>' || comline[i] == '<') {
+			qntprogs++;
+			(*qntSeparador)++;
+		}
+		i++;
+	}
+	return qntprogs;
 }
 
 void LidaComPrograma (char *comline) {
-	char ***args;
-	int qntTokens, i, j, qntProgs;
+	char ***args = NULL;
+	int qntTokens, i, j, qntProgs, separador = 0, auxposi;
 
-	qntProgs = quebraSTR(&(*args), comline, &qntTokens);// passa a posição da memória do ponteiro duplo pra modificação
+	qntProgs = qntProgramas(comline, &separador);
+
+	//vetor auxiliar quantia de args de cada arg
+	int qntAUX[separador + qntProgs];
+	auxposi = (separador + qntProgs) - 1;
+
+	args = malloc(1 * strlen(comline));
+	if (args == NULL) {
+		perror("Erro de alocação de memória! ");
+		exit(1);
+	}
+
+	quebraSTR(args, comline, &qntTokens, qntAUX);// passa a posição da memória do ponteiro duplo pra modificação
 
 	if (qntProgs == 1) {
 		umProg(*args);
@@ -725,7 +753,7 @@ void LidaComPrograma (char *comline) {
 	i = 0;
 	int aux;
 
-	while (i < (qntProgs + (qntProgs - 1)))
+	while (i < (qntProgs + separador))
 	{
 		args++; //coloca ponteiro tripo na ultima posição
 		i++;
@@ -735,9 +763,10 @@ void LidaComPrograma (char *comline) {
 	{
 		args--; 
 		aux = 0;
-		while (**args != NULL) //coloca o ponteiro duplo na ultima posição
+		while (qntAUX[auxposi] > 0) //coloca o ponteiro duplo na ultima posição
 		{
 			(*args)++;
+			qntAUX[auxposi]--;
 			aux++;
 		}
 		while (aux > 0) //desaloca a partir da ultima posição
@@ -748,7 +777,9 @@ void LidaComPrograma (char *comline) {
 		}
 		free(*args);//libera memoria do ponteiro triplo a partir da ultima posição
 		i--;
+		auxposi--;
 	}
+	free(args);
 }
 
 int main (void) {
