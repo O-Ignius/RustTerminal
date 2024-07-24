@@ -106,13 +106,16 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 					(*pointStr)++;
 					i++;
 				}
+				**pointStr = NULL;
 			}
 			else if (qntArgs == 0) {
 				alocaMeVETArgs(pointStr, 1);
+				**pointStr = NULL;
 			}
 
 			tam = strlen(tok);
 			alocaMemArgs(pointStr, tam); 
+			memset(**pointStr, 0, (tam+1));//seta pra zero caso tenha lixo de memória
 			memcpy(**pointStr ,tok, tam);
 			saveP = (*pointStr);	//salva posição do ponteiro para apontá-lo pra NULL
 			(*pointStr)++;
@@ -137,9 +140,11 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 			pointStr++;
 
 			alocaMeVETArgs(pointStr, 1);
+			**pointStr = NULL;
 
 			tam = strlen(tok);
-			alocaMemArgs(pointStr, tam); 
+			alocaMemArgs(pointStr, tam);
+			memset(**pointStr, 0, (tam+1));//seta pra zero caso tenha lixo de memória
 			memcpy(**pointStr ,tok, tam);
 			aux++;
 			qntAUX[qnt++] = 1;
@@ -733,6 +738,7 @@ void LidaComPrograma (char *comline) {
 		perror("Erro de alocação de memória! ");
 		exit(1);
 	}
+	*args = NULL;
 
 	quebraSTR(args, comline, &qntTokens, qntAUX);// passa a posição da memória do ponteiro duplo pra modificação
 
@@ -784,6 +790,7 @@ void LidaComPrograma (char *comline) {
 
 int main (void) {
 	char comline[4096];
+	memset(comline, 0, 4096);
 
 	while(1) {
 		//zerar string base
