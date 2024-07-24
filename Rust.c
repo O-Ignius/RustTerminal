@@ -733,7 +733,7 @@ void LidaComPrograma (char *comline) {
 	int qntAUX[separador + qntProgs];
 	auxposi = (separador + qntProgs) - 1;
 
-	args = malloc(1 * strlen(comline));
+	args = malloc(1 * (qntProgs + separador));
 	if (args == NULL) {
 		perror("Erro de alocação de memória! ");
 		exit(1);
