@@ -42,7 +42,7 @@ void tiraon(char *txt) {
 void alocaMeVETArgs(char ***point, int qntProgs) {
 	int i = 0;
 
-	*point = malloc(qntProgs);
+	*point = malloc(qntProgs * sizeof(*point));
 	if (point == NULL) {
 		perror("Erro de realocação de memória! ");
 		exit(1);
@@ -51,7 +51,7 @@ void alocaMeVETArgs(char ***point, int qntProgs) {
 
 //aloca um vetor para receber uma string que contenha um argumento ou nome do programa
 void alocaMemArgs(char ***point, int tam) {
-	**point = malloc(1 * tam);
+	**point = malloc(sizeof(**point) * tam);
 	if (**point == NULL) {
 		perror("Erro de alocação de memória! ");
 		exit(1);
@@ -378,7 +378,7 @@ void doisProgs(char ***args) {
 }
 
 void alocaMEMint(int **point, int qnt) {
-	*point = malloc(1*sizeof(int));
+	*point = malloc(sizeof(point) * sizeof(int));
 	if (point == NULL) {
 		perror("Erro de memória! ");
 		exit(1);
@@ -520,13 +520,13 @@ void tresMaisProg(char ***args, int qntProgs) {
 	int *pidFG = NULL, **pipeFD = NULL, *sep = NULL, control = 0, i = 0, aux;
 	int **pipeFD2 = NULL, **pipeFD_base = NULL, *sep_base = NULL, savePipe1[2], savePipe2[2];
 
-	pidFG = malloc(1 * (qntProgs));
+	pidFG = malloc(sizeof(pidFG) * (qntProgs));
 	if (pidFG == NULL) {
 		perror("Erro de memória! ");
 		exit(1);
 	}
 
-	pipeFD = malloc(1 * (qntProgs - 1));
+	pipeFD = malloc(sizeof(pipeFD) * (qntProgs - 1));
 	if (pipeFD == NULL) {
 		perror("Erro de memória! ");
 		exit(1);
@@ -551,7 +551,7 @@ void tresMaisProg(char ***args, int qntProgs) {
 	}
 
 	//aloca memoria pro separador:
-	sep = malloc(1*(qntProgs - 1));
+	sep = malloc(sizeof(sep) * (qntProgs - 1));
 	if (sep == NULL) {
 		perror("Erro de memória! ");
 		exit(1);
@@ -733,7 +733,7 @@ void LidaComPrograma (char *comline) {
 	int qntAUX[separador + qntProgs];
 	auxposi = (separador + qntProgs) - 1;
 
-	args = malloc(60);
+	args = malloc(sizeof(args) * (qntProgs + separador));
 	//args = malloc(1 * (qntProgs + separador)); //### Seria o correto mas por algum motivo a alocação de um ponteiro está sobrepondo a outra
 	if (args == NULL) {
 		perror("Erro de alocação de memória! ");
