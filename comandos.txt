@@ -1,0 +1,8 @@
+ls -la
+ls -la | grep R
+echo a > teste.txt
+cat teste.txt
+rm teste.txt
+ls -la > teste.txt
+cat < teste.txt
+ls -la | grep README > testeando.txt

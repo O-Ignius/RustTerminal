@@ -42,7 +42,7 @@ void tiraon(char *txt) {
 void alocaMeVETArgs(char ***point, int qntProgs) {
 	int i = 0;
 
-	*point = malloc(1*qntProgs);
+	*point = malloc(qntProgs);
 	if (point == NULL) {
 		perror("Erro de realocação de memória! ");
 		exit(1);
@@ -126,7 +126,7 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 			//volta ponteiro pra posição inicial
 			i = 0;
 			(*pointStr) = NULL;
-			(*pointStr) = saveP; //volta o ponteiro para antes de NULL
+ 			(*pointStr) = saveP; //volta o ponteiro para antes de NULL
 
 			while (i < (qntArgs - 1)) //-1 pois não está levando em conta o NULL do final
 			{	
@@ -733,7 +733,8 @@ void LidaComPrograma (char *comline) {
 	int qntAUX[separador + qntProgs];
 	auxposi = (separador + qntProgs) - 1;
 
-	args = malloc(1 * (qntProgs + separador));
+	args = malloc(60);
+	//args = malloc(1 * (qntProgs + separador)); //### Seria o correto mas por algum motivo a alocação de um ponteiro está sobrepondo a outra
 	if (args == NULL) {
 		perror("Erro de alocação de memória! ");
 		exit(1);
