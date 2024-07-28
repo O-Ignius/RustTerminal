@@ -94,8 +94,10 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 					(*pointStr)--;
 					i++;
 				}
-				
-				if (realloc(*pointStr, (qntArgs + 1)) == NULL) { //realoca variante a quantia de argumentos
+
+				(*pointStr) = realloc((*pointStr), (sizeof(char *) * (qntArgs + 2)));
+
+				if ((*pointStr) == NULL) { //realoca variante a quantia de argumentos
 					perror("Erro de alocação de memória! ");
 					exit(1);
 				}
@@ -109,7 +111,7 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 				**pointStr = NULL;
 			}
 			else if (qntArgs == 0) {
-				alocaMeVETArgs(pointStr, 1);
+				alocaMeVETArgs(pointStr, 2);
 				**pointStr = NULL;
 			}
 
@@ -119,12 +121,14 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 			memcpy(**pointStr ,tok, tam);
 			saveP = (*pointStr);	//salva posição do ponteiro para apontá-lo pra NULL
 			(*pointStr)++;
+			(**pointStr) = NULL;
 			aux++;
 			qntArgs++;
 		}
 		else {
 			//volta ponteiro pra posição inicial
 			i = 0;
+			(**pointStr) = NULL;
 			(*pointStr) = NULL;
  			(*pointStr) = saveP; //volta o ponteiro para antes de NULL
 
@@ -157,7 +161,8 @@ void quebraSTR(char ***pointStr, char *str, int *qntToken, int *qntAUX) {
 	}
 
 	i = 0;
-	(*pointStr) = NULL;
+	(**pointStr) = NULL;
+	//(*pointStr) = NULL;
 	(*pointStr) = saveP; //volta o ponteiro para antes de NULL
 
 	while (i < (qntArgs - 1)) //-1 pois não está levando em conta o NULL do final
@@ -378,7 +383,7 @@ void doisProgs(char ***args) {
 }
 
 void alocaMEMint(int **point, int qnt) {
-	*point = malloc(sizeof(point) * sizeof(int));
+	*point = malloc(sizeof(*point) * qnt);
 	if (point == NULL) {
 		perror("Erro de memória! ");
 		exit(1);
@@ -419,6 +424,10 @@ void criaArqv3Args(char *args, int *pipeFD, int *pipeFD2) {
 	fclose(arq);
 
 	arq = fopen(args, "r");
+	if (arq == NULL) {
+		perror("Erro de abertura de arquivo");
+		exit(1);
+	}
 	// le do arquivo e escreve na saida
 	fread(buff, 1, buffTAM, arq);
 
@@ -461,16 +470,11 @@ void execProg3Args(char **args, int *pipeFD, int *pipeFD2, int ponta1, int vincu
 
 void forkOPT(char **args, int sep, int *pipeFD, int *pipeFD2, int control, int extrem) {
 	if (extrem == 1) {//está no inicio
-		if (sep == 0) {
+		if (sep == 0 || sep == 1) {
 			execProg(args, pipeFD, WriteP, STDOUT_FILENO);
 		}
-		else if (sep == 1) {
-
-			criaArqv(*args, pipeFD);
-		}
 		else if (sep == 2) {
-
-			criaArqv3Args(*args, pipeFD2, pipeFD);
+			execProg3Args(args, pipeFD, pipeFD2, ReadP, STDIN_FILENO, WriteP, STDOUT_FILENO);
 		}
 	}
 	else if (extrem == 2)// está no fim
@@ -479,11 +483,9 @@ void forkOPT(char **args, int sep, int *pipeFD, int *pipeFD2, int control, int e
 			execProg(args, pipeFD, ReadP, STDIN_FILENO);
 		}
 		else if (sep == 1) {
-
 			criaArqv(*args, pipeFD);
 		}
 		else if (sep == 2) {
-
 			leArqv(*args, pipeFD);
 		}
 	}
@@ -492,12 +494,11 @@ void forkOPT(char **args, int sep, int *pipeFD, int *pipeFD2, int control, int e
 			execProg3Args(args, pipeFD, pipeFD2, ReadP, STDIN_FILENO, WriteP, STDOUT_FILENO);
 		}
 		else if (sep == 1) {
-
+			//########## Bash tem redirecionador pra arquivo no meio do script/???????????????
 			criaArqv3Args(*args, pipeFD, pipeFD2);
 		}
 		else if (sep == 2) {
-
-			criaArqv3Args(*args, pipeFD2, pipeFD);
+			leArqv(*args, pipeFD);
 		}
 	}
 }
@@ -593,25 +594,31 @@ void tresMaisProg(char ***args, int qntProgs) {
 	if (*pidFG == 0) {
 		//filhos
 		if (control == 1) { //está no primeiro filho
-			savePipe1[0] = ((pipeFD[0])[0]);
-			savePipe1[1] = ((pipeFD[0])[1]);
+			savePipe1[0] = ((pipeFD[control - 1])[0]);
+			savePipe1[1] = ((pipeFD[control - 1])[1]);
+			savePipe2[0] = ((pipeFD[control])[0]);
+			savePipe2[1] = ((pipeFD[control])[1]);
 
 			i = 0;
 			while (i < (qntProgs - 1)) {
-				if (((*pipeFD_base)[0]) != savePipe1[0] && ((*pipeFD_base)[0]) != savePipe1[1]) {
+				if (((*pipeFD_base)[0]) == savePipe1[0] && ((*pipeFD_base)[1]) == savePipe1[1]) {
+					pipeFD_base++;
+					i++;
+				}
+				else if (((*pipeFD_base)[0]) == savePipe2[0] && ((*pipeFD_base)[1]) == savePipe2[1]) {
+					pipeFD_base++;
+					i++;
+				}
+				else {
 					//fecha no geral
 					close((*pipeFD_base)[WriteP]);
 					close((*pipeFD_base)[ReadP]);
 					pipeFD_base++;
 					i++;
 				}
-				else {
-					pipeFD_base++;
-					i++;
-				}
 			}
 
-			forkOPT(*args, (sep[control - 1]), savePipe1, NULL, control, 1);
+			forkOPT(*args, (sep[control - 1]), savePipe1, savePipe2, control, 1);
 		}
 		else if (control == qntProgs) { //está no ultimo filho
 			savePipe1[0] = ((pipeFD[control - 2])[0]);
@@ -776,13 +783,14 @@ void LidaComPrograma (char *comline) {
 			qntAUX[auxposi]--;
 			aux++;
 		}
-		while (aux > 0) //desaloca a partir da ultima posição
+		while (aux >= 0) //desaloca a partir da ultima posição
 		{
+			free((**args));
 			(*args)--;
-			free(**args);
 			aux--;
 		}
-		free(*args);//libera memoria do ponteiro triplo a partir da ultima posição
+		(*args)++;
+		free((*args));//libera memoria do ponteiro triplo a partir da ultima posição
 		i--;
 		auxposi--;
 	}
